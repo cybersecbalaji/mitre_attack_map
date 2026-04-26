@@ -1,4 +1,4 @@
-import { ATTACKTechnique } from "@/types"
+import { ATTACKTechnique, DataSource, Mitigation } from "@/types"
 
 export const STIX_URL =
   "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
@@ -19,6 +19,12 @@ interface StixObject {
   x_mitre_is_subtechnique?: boolean
   kill_chain_phases?: { kill_chain_name: string; phase_name: string }[]
   external_references?: { source_name: string; external_id?: string; url?: string }[]
+  // data-component parent ref
+  x_mitre_data_source_ref?: string
+  // relationship fields
+  relationship_type?: string
+  source_ref?: string
+  target_ref?: string
 }
 
 interface StixBundle {
@@ -60,14 +66,12 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
   const response = await fetch(STIX_URL, {
     headers: { Accept: "application/json" },
     signal,
-    // No credentials — this is a public CDN
   })
 
   if (!response.ok) {
     throw new Error(`Failed to fetch ATT&CK STIX data: HTTP ${response.status}`)
   }
 
-  // Guard against oversized responses
   const contentLength = response.headers.get("content-length")
   if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
     throw new Error("ATT&CK STIX response too large — possible tampering")
@@ -89,15 +93,99 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
     throw new Error("Unexpected STIX bundle structure")
   }
 
-  // Parse all valid attack-pattern objects
-  const rawTechniques = bundle.objects.filter(
-    (obj): obj is StixObject =>
-      obj.type === "attack-pattern" &&
-      !obj.x_mitre_deprecated &&
-      !obj.revoked
-  )
+  // --- Single pass: collect all object types ---
+  const rawTechniques: StixObject[] = []
+  // stix id → {DS0009, "Process"}
+  const dataSourceByStixId = new Map<string, { id: string; name: string }>()
+  // stix id → {component name, parent data-source stix id}
+  const dataComponentByStixId = new Map<string, { name: string; parentStixId: string }>()
+  // stix id → Mitigation
+  const courseOfActionByStixId = new Map<string, Mitigation>()
+  // attack-pattern stix id → ATT&CK technique id (T1059)
+  const stixIdToAttackId = new Map<string, string>()
+  // detects: data-component stix id → attack-pattern stix id
+  const detectsRels: Array<{ sourceRef: string; targetRef: string }> = []
+  // mitigates: course-of-action stix id → attack-pattern stix id
+  const mitigatesRels: Array<{ sourceRef: string; targetRef: string }> = []
 
-  // Build a map from technique ID → ATTACKTechnique (without subtechniques populated yet)
+  for (const obj of bundle.objects) {
+    switch (obj.type) {
+      case "attack-pattern": {
+        if (obj.x_mitre_deprecated || obj.revoked) break
+        rawTechniques.push(obj)
+        const attackId = extractTechniqueId(obj)
+        if (attackId) stixIdToAttackId.set(obj.id, attackId)
+        break
+      }
+      case "x-mitre-data-source": {
+        const dsId = obj.external_references?.find((r) => r.source_name === "mitre-attack")?.external_id
+        if (dsId) dataSourceByStixId.set(obj.id, { id: dsId, name: obj.name })
+        break
+      }
+      case "x-mitre-data-component": {
+        dataComponentByStixId.set(obj.id, {
+          name: obj.name,
+          parentStixId: obj.x_mitre_data_source_ref ?? "",
+        })
+        break
+      }
+      case "course-of-action": {
+        const mId = obj.external_references?.find((r) => r.source_name === "mitre-attack")?.external_id
+        if (mId) {
+          courseOfActionByStixId.set(obj.id, {
+            id: mId,
+            name: obj.name,
+            description: truncateDescription(obj.description),
+          })
+        }
+        break
+      }
+      case "relationship": {
+        if (obj.relationship_type === "detects" && obj.source_ref && obj.target_ref) {
+          detectsRels.push({ sourceRef: obj.source_ref, targetRef: obj.target_ref })
+        } else if (obj.relationship_type === "mitigates" && obj.source_ref && obj.target_ref) {
+          mitigatesRels.push({ sourceRef: obj.source_ref, targetRef: obj.target_ref })
+        }
+        break
+      }
+    }
+  }
+
+  // --- Build per-technique data-source maps ---
+  const techDataSources = new Map<string, DataSource[]>()
+  for (const { sourceRef, targetRef } of detectsRels) {
+    const attackId = stixIdToAttackId.get(targetRef)
+    if (!attackId) continue
+    const comp = dataComponentByStixId.get(sourceRef)
+    if (!comp) continue
+    const ds = dataSourceByStixId.get(comp.parentStixId)
+    if (!ds) continue
+    const entry: DataSource = { id: ds.id, name: ds.name, component: comp.name }
+    const list = techDataSources.get(attackId)
+    if (list) {
+      // Avoid duplicate components
+      if (!list.some((d) => d.id === ds.id && d.component === comp.name)) list.push(entry)
+    } else {
+      techDataSources.set(attackId, [entry])
+    }
+  }
+
+  // --- Build per-technique mitigation maps ---
+  const techMitigations = new Map<string, Mitigation[]>()
+  for (const { sourceRef, targetRef } of mitigatesRels) {
+    const attackId = stixIdToAttackId.get(targetRef)
+    if (!attackId) continue
+    const mit = courseOfActionByStixId.get(sourceRef)
+    if (!mit) continue
+    const list = techMitigations.get(attackId)
+    if (list) {
+      if (!list.some((m) => m.id === mit.id)) list.push(mit)
+    } else {
+      techMitigations.set(attackId, [mit])
+    }
+  }
+
+  // --- Build technique map ---
   const techniqueMap = new Map<string, ATTACKTechnique>()
 
   for (const obj of rawTechniques) {
@@ -114,6 +202,8 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
       isSubtechnique: obj.x_mitre_is_subtechnique ?? id.includes("."),
       parentId: id.includes(".") ? id.split(".")[0] : undefined,
       url: buildTechniqueUrl(id),
+      dataSources: techDataSources.get(id) ?? [],
+      mitigations: techMitigations.get(id) ?? [],
     }
 
     techniqueMap.set(id, technique)
@@ -136,7 +226,6 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
     technique.subtechniques.sort((a, b) => a.id.localeCompare(b.id))
   }
 
-  // Return only top-level techniques (subtechniques are nested inside parents)
   const topLevel = allTechniqueValues
     .filter((t) => !t.isSubtechnique)
     .sort((a, b) => a.id.localeCompare(b.id))

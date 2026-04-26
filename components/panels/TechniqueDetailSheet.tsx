@@ -130,6 +130,37 @@ export function TechniqueDetailSheet({ open, onClose, technique, coverageCell, t
                   )}
                 </section>
 
+                {/* Mitigations */}
+                <section data-testid="detail-mitigations">
+                  <h3 className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">
+                    Mitigations{technique.mitigations.length > 0 ? ` (${technique.mitigations.length})` : ""}
+                  </h3>
+                  {technique.mitigations.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {technique.mitigations.map((m) => (
+                        <li
+                          key={m.id}
+                          className="bg-slate-800/60 border border-slate-700 rounded p-2"
+                        >
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="font-mono text-teal-400 text-[10px]">{m.id}</span>
+                          </div>
+                          <div className="text-xs text-slate-200 font-medium">{m.name}</div>
+                          {m.description && (
+                            <div className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                              {m.description}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-slate-500 text-xs italic">
+                      No mitigations listed for this technique.
+                    </p>
+                  )}
+                </section>
+
                 {/* Sub-techniques summary */}
                 {technique.subtechniques.length > 0 && (
                   <section>

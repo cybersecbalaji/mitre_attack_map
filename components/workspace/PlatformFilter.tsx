@@ -64,8 +64,12 @@ export function PlatformFilter({ selected, onChange }: PlatformFilterProps) {
             onSelect={(e) => e.preventDefault()}
             className="text-xs hover:bg-slate-700 focus:bg-slate-700"
             data-testid={`platform-option-${platform.toLowerCase().replace(/\s+/g, "-")}`}
+            title={platform === "IaaS" ? "Covers AWS, Azure, GCP (MITRE canonical name)" : undefined}
           >
             {platform}
+            {platform === "IaaS" && (
+              <span className="ml-1.5 text-slate-500 text-[9px]">AWS/Azure/GCP</span>
+            )}
           </DropdownMenuCheckboxItem>
         ))}
         {selected.length > 0 && (

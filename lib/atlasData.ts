@@ -110,6 +110,8 @@ function parseATLAS(
       subtechniques: [],
       isSubtechnique: false,
       url: `https://atlas.mitre.org/techniques/${t.id}/`,
+      dataSources: [],
+      mitigations: [],
     })
   }
 
@@ -126,6 +128,8 @@ function parseATLAS(
       isSubtechnique: true,
       parentId,
       url: `https://atlas.mitre.org/techniques/${t.id}/`,
+      dataSources: [],
+      mitigations: [],
     }
     parent?.subtechniques.push(sub)
   }

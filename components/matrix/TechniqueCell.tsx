@@ -1,6 +1,6 @@
 "use client"
 import { useState } from "react"
-import { ATTACKTechnique, CoverageCell, COVERAGE_COLORS } from "@/types"
+import { ATTACKTechnique, CoverageCell, COVERAGE_COLORS, DENSITY_COLORS, MatrixView } from "@/types"
 import { SubtechniqueCell } from "./SubtechniqueCell"
 import { cn } from "@/lib/utils"
 
@@ -9,18 +9,29 @@ interface TechniqueCellProps {
   coverageCell?: CoverageCell
   coverageMap: Map<string, CoverageCell>
   onClick: (technique: ATTACKTechnique) => void
+  view?: MatrixView
 }
 
-function getCellColor(cell?: CoverageCell): string {
+function getCoverageColor(cell?: CoverageCell): string {
   if (!cell) return COVERAGE_COLORS.uncovered
   return COVERAGE_COLORS[cell.status]
 }
 
-export function TechniqueCell({ technique, coverageCell, coverageMap, onClick }: TechniqueCellProps) {
+function getDensityColor(ruleCount: number): string {
+  if (ruleCount === 0) return DENSITY_COLORS.none
+  if (ruleCount === 1) return DENSITY_COLORS.low
+  if (ruleCount <= 3) return DENSITY_COLORS.medium
+  if (ruleCount <= 5) return DENSITY_COLORS.high
+  return DENSITY_COLORS.over
+}
+
+export function TechniqueCell({ technique, coverageCell, coverageMap, onClick, view = "coverage" }: TechniqueCellProps) {
   const [expanded, setExpanded] = useState(false)
   const hasSubtechniques = technique.subtechniques.length > 0
-  const bgColor = getCellColor(coverageCell)
-  const isUncovered = !coverageCell || coverageCell.status === "uncovered"
+
+  const ruleCount = coverageCell?.rules.length ?? 0
+  const bgColor = view === "density" ? getDensityColor(ruleCount) : getCoverageColor(coverageCell)
+  const isDark = view === "density" ? ruleCount <= 1 : (!coverageCell || coverageCell.status === "uncovered")
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -42,7 +53,7 @@ export function TechniqueCell({ technique, coverageCell, coverageMap, onClick }:
             "w-full text-left px-1.5 py-0.5 rounded-sm text-[10px] leading-tight transition-all duration-150",
             "focus:outline-none focus:ring-1 focus:ring-teal-400",
             "hover:brightness-125 hover:z-10 hover:shadow-md relative",
-            isUncovered ? "text-slate-400 hover:text-slate-200" : "text-slate-900 font-medium"
+            isDark ? "text-slate-400 hover:text-slate-200" : "text-slate-900 font-medium"
           )}
           style={{ backgroundColor: bgColor }}
           title={`${technique.id}: ${technique.name}`}
@@ -50,6 +61,14 @@ export function TechniqueCell({ technique, coverageCell, coverageMap, onClick }:
         >
           <span className="block truncate font-mono" style={{ fontSize: "9px" }}>{technique.id}</span>
           <span className="block truncate">{technique.name}</span>
+          {view === "density" && ruleCount > 0 && (
+            <span
+              className="absolute right-0.5 bottom-0.5 text-[8px] font-mono opacity-80 px-0.5 rounded"
+              aria-label={`${ruleCount} rules`}
+            >
+              {ruleCount}
+            </span>
+          )}
           {hasSubtechniques && (
             <button
               onClick={handleExpandToggle}

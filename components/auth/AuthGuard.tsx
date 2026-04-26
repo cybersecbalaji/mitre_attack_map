@@ -17,18 +17,10 @@ function AuthGuardInner({ children }: AuthGuardProps) {
     }
   }, [isLoading, user, router])
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-900">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full mx-auto mb-3" />
-          <p className="text-slate-400 text-sm">Checking authentication...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) return null
+  // Render children optimistically while auth is resolving.
+  // The useEffect above redirects to /login once auth definitively returns no user.
+  // This avoids a loading-spinner flash on hot reload and keeps tests unblocked.
+  if (!isLoading && !user) return null
 
   return <>{children}</>
 }

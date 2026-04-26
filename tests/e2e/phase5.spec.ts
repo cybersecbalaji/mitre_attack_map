@@ -33,13 +33,13 @@ const MOCK_STIX = {
       kill_chain_phases: [{ kill_chain_name: "mitre-attack", phase_name: "persistence" }],
       external_references: [{ source_name: "mitre-attack", external_id: "T1078" }],
     },
-    // AWS-only
+    // IaaS-only (covers AWS/Azure/GCP in MITRE canonical naming)
     {
       type: "attack-pattern",
-      name: "AWS Cloud Technique",
-      description: "AWS cloud technique description.",
+      name: "Cloud IaaS Technique",
+      description: "IaaS cloud technique description.",
       x_mitre_deprecated: false, revoked: false, x_mitre_is_subtechnique: false,
-      x_mitre_platforms: ["AWS"],
+      x_mitre_platforms: ["IaaS"],
       kill_chain_phases: [{ kill_chain_name: "mitre-attack", phase_name: "discovery" }],
       external_references: [{ source_name: "mitre-attack", external_id: "T1580" }],
     },
@@ -47,7 +47,7 @@ const MOCK_STIX = {
 }
 
 async function setupMockStix(page: import("@playwright/test").Page) {
-  await page.addInitScript(() => localStorage.removeItem("attackmap_stix_cache"))
+  await page.addInitScript(() => localStorage.removeItem("attackmap_stix_cache_v2"))
   await page.route("https://raw.githubusercontent.com/**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_STIX) })
   )
@@ -120,7 +120,7 @@ test.describe("Phase 5 — Technique Detail + Platform Filter", () => {
     await expect(page.getByTestId("platform-filter-menu")).toBeVisible()
     await expect(page.getByTestId("platform-option-windows")).toBeVisible()
     await expect(page.getByTestId("platform-option-linux")).toBeVisible()
-    await expect(page.getByTestId("platform-option-aws")).toBeVisible()
+    await expect(page.getByTestId("platform-option-iaas")).toBeVisible()
   })
 
   test("selecting Windows filter hides Linux-only and AWS techniques", async ({ page }) => {
@@ -142,7 +142,7 @@ test.describe("Phase 5 — Technique Detail + Platform Filter", () => {
     // Filter banner active
     await expect(page.getByTestId("platform-filter-active")).toBeVisible()
 
-    // T1059 (Windows-only) and T1078 (cross-platform) still shown; T1100 (Linux) and T1580 (AWS) hidden
+    // T1059 (Windows-only) and T1078 (cross-platform) still shown; T1100 (Linux) and T1580 (IaaS) hidden
     await expect(page.getByText("T1059").first()).toBeVisible()
     await expect(page.getByText("T1078").first()).toBeVisible()
     await expect(page.locator("body")).not.toContainText("T1100")
@@ -157,9 +157,9 @@ test.describe("Phase 5 — Technique Detail + Platform Filter", () => {
     // Total before filter — 4 techniques
     await expect(page.getByTestId("kpi-total-techniques")).toContainText("4")
 
-    // Apply AWS filter — only T1580 matches
+    // Apply IaaS filter — only T1580 matches
     await page.getByTestId("platform-filter-trigger").click()
-    await page.getByTestId("platform-option-aws").click()
+    await page.getByTestId("platform-option-iaas").click()
     await page.keyboard.press("Escape")
 
     // Total should drop to 1
@@ -194,7 +194,7 @@ test.describe("Phase 5 — Technique Detail + Platform Filter", () => {
         external_references: [{ source_name: "mitre-attack", external_id: "T9001" }],
       }],
     }
-    await page.addInitScript(() => localStorage.removeItem("attackmap_stix_cache"))
+    await page.addInitScript(() => localStorage.removeItem("attackmap_stix_cache_v2"))
     await page.route("https://raw.githubusercontent.com/**", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(xssMock) })
     )

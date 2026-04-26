@@ -3,13 +3,17 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PlatformFilter } from "./PlatformFilter"
-import { MatrixType } from "@/types"
+import { DataSourceFilter } from "./DataSourceFilter"
+import { ATTACKTechnique, MatrixType, MatrixView } from "@/types"
 
 interface WorkspaceHeaderProps {
   workspaceName: string
   onNameChange: (name: string) => void
   platformFilter: string[]
   onPlatformFilterChange: (platforms: string[]) => void
+  dataSourceFilter: string[]
+  onDataSourceFilterChange: (ids: string[]) => void
+  allTechniques: ATTACKTechnique[]
   onExport: () => void
   onShare: () => void
   onSaveSnapshot: () => void
@@ -18,6 +22,8 @@ interface WorkspaceHeaderProps {
   isShared?: boolean
   matrixType?: MatrixType
   onMatrixTypeChange?: (type: MatrixType) => void
+  view?: MatrixView
+  onViewChange?: (view: MatrixView) => void
   userEmail?: string
   onSignOut?: () => void
 }
@@ -27,6 +33,9 @@ export function WorkspaceHeader({
   onNameChange,
   platformFilter,
   onPlatformFilterChange,
+  dataSourceFilter,
+  onDataSourceFilterChange,
+  allTechniques,
   onExport,
   onShare,
   onSaveSnapshot,
@@ -35,6 +44,8 @@ export function WorkspaceHeader({
   isShared,
   matrixType = "attack",
   onMatrixTypeChange,
+  view = "coverage",
+  onViewChange,
   userEmail,
   onSignOut,
 }: WorkspaceHeaderProps) {
@@ -95,6 +106,34 @@ export function WorkspaceHeader({
           </div>
         )}
 
+        {/* View switcher: Coverage | Density */}
+        {onViewChange && (
+          <div className="flex items-center bg-slate-800 rounded border border-slate-700 text-xs overflow-hidden">
+            <button
+              onClick={() => onViewChange("coverage")}
+              className={`px-2 py-1 transition-colors ${
+                view === "coverage"
+                  ? "bg-slate-600 text-slate-100"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              data-testid="view-coverage"
+            >
+              Coverage
+            </button>
+            <button
+              onClick={() => onViewChange("density")}
+              className={`px-2 py-1 transition-colors ${
+                view === "density"
+                  ? "bg-slate-600 text-slate-100"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              data-testid="view-density"
+            >
+              Density
+            </button>
+          </div>
+        )}
+
         {editing ? (
           <Input
             ref={inputRef}
@@ -128,6 +167,13 @@ export function WorkspaceHeader({
           </span>
         )}
         <PlatformFilter selected={platformFilter} onChange={onPlatformFilterChange} />
+        {matrixType === "attack" && (
+          <DataSourceFilter
+            techniques={allTechniques}
+            selected={dataSourceFilter}
+            onChange={onDataSourceFilterChange}
+          />
+        )}
         <Button
           variant="outline"
           size="sm"

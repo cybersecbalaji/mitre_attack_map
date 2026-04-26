@@ -1,5 +1,5 @@
 "use client"
-import { ATTACKTechnique, CoverageCell, TACTIC_NAMES } from "@/types"
+import { ATTACKTechnique, CoverageCell, MatrixView, TACTIC_NAMES } from "@/types"
 import { TechniqueCell } from "./TechniqueCell"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
@@ -9,9 +9,10 @@ interface TacticColumnProps {
   coverageMap: Map<string, CoverageCell>
   onTechniqueClick: (technique: ATTACKTechnique) => void
   tacticNames?: Record<string, string>
+  view?: MatrixView
 }
 
-export function TacticColumn({ tacticId, techniques, coverageMap, onTechniqueClick, tacticNames }: TacticColumnProps) {
+export function TacticColumn({ tacticId, techniques, coverageMap, onTechniqueClick, tacticNames, view = "coverage" }: TacticColumnProps) {
   const nameMap = tacticNames ?? TACTIC_NAMES
   const displayName = nameMap[tacticId] ?? tacticId
   const coveredCount = techniques.filter((t) => {
@@ -48,6 +49,7 @@ export function TacticColumn({ tacticId, techniques, coverageMap, onTechniqueCli
             coverageCell={coverageMap.get(technique.id)}
             coverageMap={coverageMap}
             onClick={onTechniqueClick}
+            view={view}
           />
         ))}
         {techniques.length === 0 && (

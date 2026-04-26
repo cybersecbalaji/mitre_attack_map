@@ -1,6 +1,6 @@
 "use client"
 import { useMemo } from "react"
-import { ATTACKTechnique, CoverageMap, TACTIC_ORDER, TACTIC_NAMES } from "@/types"
+import { ATTACKTechnique, CoverageMap, MatrixView, TACTIC_ORDER, TACTIC_NAMES } from "@/types"
 import { TacticColumn } from "./TacticColumn"
 
 interface AttackMatrixProps {
@@ -11,6 +11,7 @@ interface AttackMatrixProps {
   tacticOrder?: readonly string[]
   tacticNames?: Record<string, string>
   ariaLabel?: string
+  view?: MatrixView
 }
 
 export function AttackMatrix({
@@ -21,6 +22,7 @@ export function AttackMatrix({
   tacticOrder: customTacticOrder,
   tacticNames: customTacticNames,
   ariaLabel,
+  view = "coverage",
 }: AttackMatrixProps) {
   const activeTacticOrder = customTacticOrder ?? TACTIC_ORDER
   const activeTacticNames = customTacticNames ?? TACTIC_NAMES
@@ -88,6 +90,7 @@ export function AttackMatrix({
               coverageMap={coverageMap}
               onTechniqueClick={onTechniqueClick}
               tacticNames={activeTacticNames}
+              view={view}
             />
           </div>
         )

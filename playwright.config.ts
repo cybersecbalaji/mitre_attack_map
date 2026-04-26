@@ -23,7 +23,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // Use a dedicated port (3001) so it never conflicts with dev server on 3000
+    // Use a dedicated port (3001) so it never conflicts with dev server on 3000.
+    // NEXT_PUBLIC_INSTANTDB_APP_ID is cleared so isInstantDBConfigured=false
+    // in tests — AuthGuard bypasses auth and all tests hit the app directly.
     command: `npx next dev --port 3001`,
     cwd: path.join(__dirname),
     url: "http://localhost:3001",
@@ -31,5 +33,8 @@ export default defineConfig({
     timeout: 120000,
     stdout: "ignore",
     stderr: "pipe",
+    env: {
+      NEXT_PUBLIC_INSTANTDB_APP_ID: "",
+    },
   },
 })

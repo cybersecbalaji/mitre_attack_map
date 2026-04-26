@@ -1,12 +1,12 @@
 "use client"
 import { useState, useMemo, useCallback } from "react"
-import { ATTACKTechnique, MatrixType } from "@/types"
+import { ATTACKTechnique, MatrixType, MatrixView } from "@/types"
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader"
 import { WorkspaceHistory } from "@/components/workspace/WorkspaceHistory"
 import { ShareBanner } from "@/components/workspace/ShareBanner"
 import { IngestionPanel } from "@/components/ingestion/IngestionPanel"
 import { AttackMatrix } from "@/components/matrix/AttackMatrix"
-import { CoverageKPIBar } from "@/components/panels/CoverageKPIBar"
+import { CoverageKPIBar, DensityStats } from "@/components/panels/CoverageKPIBar"
 import { TechniqueDetailSheet } from "@/components/panels/TechniqueDetailSheet"
 import { AuthGuard } from "@/components/auth/AuthGuard"
 import { useAttackData } from "@/hooks/useAttackData"
@@ -24,13 +24,17 @@ function matchesPlatformFilter(technique: ATTACKTechnique, filter: string[]): bo
   return technique.platforms.some((p) => lower.includes(p.toLowerCase()))
 }
 
+function matchesDataSourceFilter(technique: ATTACKTechnique, filter: string[]): boolean {
+  if (filter.length === 0) return true
+  return technique.dataSources.some((ds) => filter.includes(ds.id))
+}
+
 function AppContent() {
   const router = useRouter()
-  // Always call db.useAuth() — Rules of Hooks forbid conditional calls.
-  // When InstantDB is not configured the placeholder appId returns user: null harmlessly.
   const { user } = db.useAuth()
 
   const [matrixType, setMatrixType] = useState<MatrixType>("attack")
+  const [view, setView] = useState<MatrixView>("coverage")
 
   const attackData = useAttackData()
   const atlasData = useAtlasData()
@@ -54,25 +58,44 @@ function AppContent() {
 
   const [selectedTechnique, setSelectedTechnique] = useState<ATTACKTechnique | null>(null)
   const [platformFilter, setPlatformFilter] = useState<string[]>([])
+  const [dataSourceFilter, setDataSourceFilter] = useState<string[]>([])
   const [shareCopied, setShareCopied] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const filteredTopLevel = useMemo(
-    () => techniques.filter((t) => matchesPlatformFilter(t, platformFilter)),
-    [techniques, platformFilter]
+    () => techniques.filter((t) =>
+      matchesPlatformFilter(t, platformFilter) && matchesDataSourceFilter(t, dataSourceFilter)
+    ),
+    [techniques, platformFilter, dataSourceFilter]
   )
 
   const filteredStats = useMemo(() => {
     const filteredAll: ATTACKTechnique[] = []
     for (const t of techniques) {
       if (!matchesPlatformFilter(t, platformFilter)) continue
+      if (!matchesDataSourceFilter(t, dataSourceFilter)) continue
       filteredAll.push(t)
       for (const sub of t.subtechniques) {
-        if (matchesPlatformFilter(sub, platformFilter)) filteredAll.push(sub)
+        if (matchesPlatformFilter(sub, platformFilter) && matchesDataSourceFilter(sub, dataSourceFilter)) {
+          filteredAll.push(sub)
+        }
       }
     }
     return calculateCoverageStats(filteredAll, coverageMap)
-  }, [techniques, platformFilter, coverageMap])
+  }, [techniques, platformFilter, dataSourceFilter, coverageMap])
+
+  const densityStats = useMemo((): DensityStats => {
+    const stats: DensityStats = { none: 0, low: 0, medium: 0, high: 0, over: 0 }
+    for (const t of filteredTopLevel) {
+      const count = coverageMap.get(t.id)?.rules.length ?? 0
+      if (count === 0) stats.none++
+      else if (count === 1) stats.low++
+      else if (count <= 3) stats.medium++
+      else if (count <= 5) stats.high++
+      else stats.over++
+    }
+    return stats
+  }, [filteredTopLevel, coverageMap])
 
   const handleExport = useCallback(() => {
     if (allTechniques.length === 0) return
@@ -135,6 +158,8 @@ function AppContent() {
     )
   }
 
+  const filtersActive = platformFilter.length > 0 || dataSourceFilter.length > 0
+
   return (
     <div className="flex flex-col h-screen bg-slate-900 overflow-hidden">
       <WorkspaceHeader
@@ -142,6 +167,9 @@ function AppContent() {
         onNameChange={setWorkspaceName}
         platformFilter={platformFilter}
         onPlatformFilterChange={setPlatformFilter}
+        dataSourceFilter={dataSourceFilter}
+        onDataSourceFilterChange={setDataSourceFilter}
+        allTechniques={allTechniques}
         onExport={handleExport}
         onShare={handleShare}
         onSaveSnapshot={handleSaveSnapshot}
@@ -150,19 +178,29 @@ function AppContent() {
         isShared={isShared}
         matrixType={matrixType}
         onMatrixTypeChange={setMatrixType}
+        view={view}
+        onViewChange={setView}
         userEmail={user?.email ?? undefined}
         onSignOut={isInstantDBConfigured ? handleSignOut : undefined}
       />
 
       <ShareBanner visible={isShared} onSaveCopy={handleForkAsNew} />
 
-      {!loading && allTechniques.length > 0 && platformFilter.length > 0 && (
+      {!loading && allTechniques.length > 0 && filtersActive && (
         <div
           data-testid="platform-filter-active"
-          className="bg-amber-900/30 border-b border-amber-700/40 px-4 py-1 text-amber-200 text-xs flex items-center gap-2"
+          className="bg-amber-900/30 border-b border-amber-700/40 px-4 py-1 text-amber-200 text-xs flex items-center gap-2 flex-wrap"
         >
-          <span className="font-semibold">Platform filter active:</span>
-          <span>{platformFilter.join(", ")}</span>
+          <span className="font-semibold">Filters active:</span>
+          {platformFilter.length > 0 && (
+            <span>Platform: {platformFilter.join(", ")}</span>
+          )}
+          {platformFilter.length > 0 && dataSourceFilter.length > 0 && (
+            <span className="text-amber-500">•</span>
+          )}
+          {dataSourceFilter.length > 0 && (
+            <span>Data sources: {dataSourceFilter.join(", ")}</span>
+          )}
           <span className="text-amber-500">•</span>
           <span>{filteredTopLevel.length} top-level techniques shown</span>
         </div>
@@ -187,7 +225,11 @@ function AppContent() {
 
         <main className="flex-1 flex flex-col overflow-hidden">
           <div className="p-3 border-b border-slate-700">
-            <CoverageKPIBar stats={filteredStats} />
+            <CoverageKPIBar
+              stats={filteredStats}
+              view={view}
+              densityStats={densityStats}
+            />
           </div>
 
           {loading ? (
@@ -208,6 +250,7 @@ function AppContent() {
                 tacticOrder={tacticOrder}
                 tacticNames={tacticNames}
                 ariaLabel={matrixType === "atlas" ? "MITRE ATLAS Matrix" : "MITRE ATT&CK Enterprise Matrix"}
+                view={view}
               />
             </div>
           )}

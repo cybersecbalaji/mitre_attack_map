@@ -11,7 +11,7 @@ interface UseAttackDataResult {
   techniqueCount: number
 }
 
-const LOCAL_STORAGE_KEY = "attackmap_stix_cache"
+const LOCAL_STORAGE_KEY = "attackmap_stix_cache_v2"
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 function loadFromLocalStorage(): ATTACKTechnique[] | null {

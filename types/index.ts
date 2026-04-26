@@ -2,6 +2,19 @@
 export type CoverageStatus = "covered" | "partial" | "uncovered"
 export type RuleSource = "sigma" | "manual" | "csv"
 export type ConfidenceLevel = "strong" | "partial"
+export type MatrixView = "coverage" | "density"
+
+export interface DataSource {
+  id: string        // e.g. "DS0009"
+  name: string      // e.g. "Process"
+  component: string // e.g. "Process Creation"
+}
+
+export interface Mitigation {
+  id: string          // e.g. "M1042"
+  name: string        // e.g. "Disable or Remove Feature or Program"
+  description: string // truncated to 300 chars
+}
 
 export interface ATTACKTechnique {
   id: string              // e.g., "T1059"
@@ -13,6 +26,8 @@ export interface ATTACKTechnique {
   isSubtechnique: boolean
   parentId?: string       // for subtechniques, e.g., "T1059"
   url: string             // https://attack.mitre.org/techniques/T1059/
+  dataSources: DataSource[]
+  mitigations: Mitigation[]
 }
 
 export interface MappedRule {
@@ -80,6 +95,15 @@ export const COVERAGE_COLORS = {
   gap: "#ef4444",       // red-500
 } as const
 
+// Density heatmap colour ramp (5 buckets by rule count)
+export const DENSITY_COLORS = {
+  none:   "#1e293b", // slate-800   — 0 rules
+  low:    "#0f766e", // teal-700    — 1 rule
+  medium: "#14b8a6", // teal-500    — 2–3 rules
+  high:   "#5eead4", // teal-300    — 4–5 rules
+  over:   "#f59e0b", // amber-500   — 6+ rules (over-relied)
+} as const
+
 // ATT&CK tactic ordering
 export const TACTIC_ORDER = [
   "reconnaissance",
@@ -117,15 +141,16 @@ export const TACTIC_NAMES: Record<string, string> = {
 
 export const AVAILABLE_PLATFORMS = [
   "Windows",
-  "Linux",
   "macOS",
-  "AWS",
-  "Azure",
-  "GCP",
-  "Azure AD",
-  "Office 365",
+  "Linux",
+  "IaaS",              // covers AWS, Azure, GCP
   "SaaS",
-  "Network",
+  "Office Suite",      // was "Office 365"
+  "Identity Provider", // was "Azure AD"
+  "PRE",
+  "Containers",
+  "Network Devices",
+  "ESXi",
 ] as const
 
 export type Platform = typeof AVAILABLE_PLATFORMS[number]
