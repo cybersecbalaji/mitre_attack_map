@@ -277,6 +277,115 @@ describe("fetchAndParseSTIX", () => {
   })
 })
 
+describe("data source parsing — ATT&CK v16 detection-strategy schema", () => {
+  const V16_STIX = {
+    type: "bundle",
+    objects: [
+      {
+        type: "attack-pattern",
+        id: "attack-pattern--t1059",
+        name: "PowerShell",
+        description: "Test",
+        x_mitre_deprecated: false, revoked: false, x_mitre_is_subtechnique: false,
+        x_mitre_platforms: ["Windows"],
+        kill_chain_phases: [{ kill_chain_name: "mitre-attack", phase_name: "execution" }],
+        external_references: [{ source_name: "mitre-attack", external_id: "T1059" }],
+      },
+      {
+        type: "attack-pattern",
+        id: "attack-pattern--t1040",
+        name: "Network Sniffing",
+        description: "Test",
+        x_mitre_deprecated: false, revoked: false, x_mitre_is_subtechnique: false,
+        x_mitre_platforms: ["Linux"],
+        kill_chain_phases: [{ kill_chain_name: "mitre-attack", phase_name: "discovery" }],
+        external_references: [{ source_name: "mitre-attack", external_id: "T1040" }],
+      },
+      // data-components (new schema: x_mitre_data_source_ref is empty)
+      {
+        type: "x-mitre-data-component",
+        id: "x-mitre-data-component--dc001",
+        name: "Process Creation",
+        x_mitre_data_source_ref: "",
+        external_references: [{ source_name: "mitre-attack", external_id: "DC0009" }],
+      },
+      {
+        type: "x-mitre-data-component",
+        id: "x-mitre-data-component--dc002",
+        name: "Network Traffic Flow",
+        x_mitre_data_source_ref: "",
+        external_references: [{ source_name: "mitre-attack", external_id: "DC0011" }],
+      },
+      // analytics — bridge analytic → data-component
+      {
+        type: "x-mitre-analytic",
+        id: "x-mitre-analytic--an001",
+        name: "A1",
+        x_mitre_data_component_ref: "x-mitre-data-component--dc001",
+      },
+      {
+        type: "x-mitre-analytic",
+        id: "x-mitre-analytic--an002",
+        name: "A2",
+        x_mitre_data_component_ref: "x-mitre-data-component--dc002",
+      },
+      // detection-strategies — one per technique, reference analytics
+      {
+        type: "x-mitre-detection-strategy",
+        id: "x-mitre-detection-strategy--strat001",
+        name: "Detection Strategy for PowerShell",
+        x_mitre_analytic_refs: ["x-mitre-analytic--an001"],
+      },
+      {
+        type: "x-mitre-detection-strategy",
+        id: "x-mitre-detection-strategy--strat002",
+        name: "Detection Strategy for Network Sniffing",
+        x_mitre_analytic_refs: ["x-mitre-analytic--an002"],
+      },
+      // detects relationships (new schema: detection-strategy → attack-pattern)
+      {
+        type: "relationship",
+        id: "relationship--r001",
+        relationship_type: "detects",
+        source_ref: "x-mitre-detection-strategy--strat001",
+        target_ref: "attack-pattern--t1059",
+      },
+      {
+        type: "relationship",
+        id: "relationship--r002",
+        relationship_type: "detects",
+        source_ref: "x-mitre-detection-strategy--strat002",
+        target_ref: "attack-pattern--t1040",
+      },
+    ],
+  }
+
+  test("populates dataSources via detection-strategy chain", async () => {
+    mockFetch(V16_STIX)
+    const techniques = await fetchAndParseSTIX()
+    const t1059 = techniques.find((t) => t.id === "T1059")!
+    expect(t1059.dataSources).toHaveLength(1)
+    expect(t1059.dataSources[0].name).toBe("Process Creation")
+    expect(t1059.dataSources[0].id).toBe("DC0009")
+  })
+
+  test("each technique gets its own data sources", async () => {
+    mockFetch(V16_STIX)
+    const techniques = await fetchAndParseSTIX()
+    const t1040 = techniques.find((t) => t.id === "T1040")!
+    expect(t1040.dataSources).toHaveLength(1)
+    expect(t1040.dataSources[0].name).toBe("Network Traffic Flow")
+  })
+
+  test("techniques without a detects relationship have empty dataSources", async () => {
+    mockFetch(SYNTHETIC_STIX) // original fixture — no detects rels
+    const techniques = await fetchAndParseSTIX()
+    for (const t of techniques) {
+      expect(t.dataSources).toEqual([])
+    }
+  })
+})
+
 describe("flattenTechniques", () => {
   test("returns top-level plus all nested subtechniques", async () => {
     mockFetch(SYNTHETIC_STIX)

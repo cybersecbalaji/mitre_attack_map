@@ -1,5 +1,5 @@
 "use client"
-import { useState, useMemo, useCallback, useEffect } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { ATTACKTechnique, MatrixType, MatrixView } from "@/types"
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader"
 import { WorkspaceHistory } from "@/components/workspace/WorkspaceHistory"
@@ -46,7 +46,6 @@ function AppContent() {
 
   const { coverageMap, rules, addRules, clearRules, replaceRules } = useCoverageMap(allTechniques)
   const {
-    workspaceId,
     workspaceName,
     setWorkspaceName,
     isShared,
@@ -56,33 +55,6 @@ function AppContent() {
     forkAsNew,
     shareUrl,
   } = useWorkspace()
-
-  // Auto-persist active rules to localStorage so they survive logout/refresh
-  useEffect(() => {
-    if (!workspaceId) return
-    const key = `attackmap_rules_${workspaceId}`
-    try {
-      if (rules.length === 0) {
-        localStorage.removeItem(key)
-      } else {
-        localStorage.setItem(key, JSON.stringify(rules))
-      }
-    } catch {}
-  }, [workspaceId, rules])
-
-  // Restore rules on mount once workspaceId is known
-  useEffect(() => {
-    if (!workspaceId) return
-    try {
-      const saved = localStorage.getItem(`attackmap_rules_${workspaceId}`)
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) replaceRules(parsed)
-      }
-    } catch {}
-    // Only run once when workspaceId first becomes available
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId])
 
   const [selectedTechnique, setSelectedTechnique] = useState<ATTACKTechnique | null>(null)
   const [platformFilter, setPlatformFilter] = useState<string[]>([])
