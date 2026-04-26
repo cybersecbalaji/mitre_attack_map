@@ -107,6 +107,9 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
   const detectsRels: Array<{ sourceRef: string; targetRef: string }> = []
   // mitigates: course-of-action stix id → attack-pattern stix id
   const mitigatesRels: Array<{ sourceRef: string; targetRef: string }> = []
+  // Fallback: parse x_mitre_data_sources strings directly from attack-pattern
+  // Format: "Process: Process Creation" → { id: "process", name: "Process", component: "Process Creation" }
+  const directDataSources = new Map<string, DataSource[]>()
 
   for (const obj of bundle.objects) {
     switch (obj.type) {
@@ -114,7 +117,28 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
         if (obj.x_mitre_deprecated || obj.revoked) break
         rawTechniques.push(obj)
         const attackId = extractTechniqueId(obj)
-        if (attackId) stixIdToAttackId.set(obj.id, attackId)
+        if (attackId) {
+          stixIdToAttackId.set(obj.id, attackId)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const legacySources = (obj as any).x_mitre_data_sources as string[] | undefined
+          if (legacySources?.length) {
+            const sources: DataSource[] = []
+            const seen = new Set<string>()
+            for (const entry of legacySources) {
+              const colonIdx = entry.indexOf(": ")
+              if (colonIdx === -1) continue
+              const sourceName = entry.slice(0, colonIdx).trim()
+              const compName = entry.slice(colonIdx + 2).trim()
+              const sourceId = sourceName.toLowerCase().replace(/\s+/g, "-")
+              const key = `${sourceId}::${compName}`
+              if (!seen.has(key)) {
+                seen.add(key)
+                sources.push({ id: sourceId, name: sourceName, component: compName })
+              }
+            }
+            if (sources.length > 0) directDataSources.set(attackId, sources)
+          }
+        }
         break
       }
       case "x-mitre-data-source": {
@@ -202,7 +226,7 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
       isSubtechnique: obj.x_mitre_is_subtechnique ?? id.includes("."),
       parentId: id.includes(".") ? id.split(".")[0] : undefined,
       url: buildTechniqueUrl(id),
-      dataSources: techDataSources.get(id) ?? [],
+      dataSources: techDataSources.get(id) ?? directDataSources.get(id) ?? [],
       mitigations: techMitigations.get(id) ?? [],
     }
 
