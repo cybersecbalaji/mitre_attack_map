@@ -111,8 +111,9 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
   const dataComponentByStixId = new Map<string, { name: string; externalId: string; parentStixId: string }>()
 
   // New schema (v16+): x-mitre-detection-strategy → detects → attack-pattern
-  //   detection-strategy.x_mitre_analytic_refs → x-mitre-analytic.x_mitre_data_component_ref → data-component
-  const analyticByStixId = new Map<string, { dataComponentRef: string }>()
+  //   detection-strategy.x_mitre_analytic_refs → x-mitre-analytic
+  //   analytic.x_mitre_log_source_references[].x_mitre_data_component_ref → data-component
+  const analyticByStixId = new Map<string, { dataComponentRefs: string[] }>()
   const detectionStrategyByStixId = new Map<string, { analyticRefs: string[] }>()
 
   const courseOfActionByStixId = new Map<string, Mitigation>()
@@ -143,8 +144,13 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
       }
       case "x-mitre-analytic": {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const dcRef = (obj as any).x_mitre_data_component_ref as string | undefined
-        if (dcRef) analyticByStixId.set(obj.id, { dataComponentRef: dcRef })
+        const logSrcRefs = (obj as any).x_mitre_log_source_references as Array<{ x_mitre_data_component_ref?: string }> | undefined
+        if (logSrcRefs?.length) {
+          const dcRefs = [...new Set(
+            logSrcRefs.map((r) => r.x_mitre_data_component_ref).filter(Boolean) as string[]
+          )]
+          if (dcRefs.length) analyticByStixId.set(obj.id, { dataComponentRefs: dcRefs })
+        }
         break
       }
       case "x-mitre-detection-strategy": {
@@ -204,10 +210,12 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
     for (const analyticRef of strategy.analyticRefs) {
       const analytic = analyticByStixId.get(analyticRef)
       if (!analytic) continue
-      const dc = dataComponentByStixId.get(analytic.dataComponentRef)
-      if (!dc) continue
-      const id = dc.externalId || dc.name.toLowerCase().replace(/\s+/g, "-")
-      addDataSource(techDataSources, attackId, { id, name: dc.name, component: dc.name })
+      for (const dcRef of analytic.dataComponentRefs) {
+        const dc = dataComponentByStixId.get(dcRef)
+        if (!dc) continue
+        const id = dc.externalId || dc.name.toLowerCase().replace(/\s+/g, "-")
+        addDataSource(techDataSources, attackId, { id, name: dc.name, component: dc.name })
+      }
     }
   }
 

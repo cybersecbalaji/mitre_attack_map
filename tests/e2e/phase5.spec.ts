@@ -47,7 +47,7 @@ const MOCK_STIX = {
 }
 
 async function setupMockStix(page: import("@playwright/test").Page) {
-  await page.addInitScript(() => localStorage.removeItem("attackmap_stix_cache_v4"))
+  await page.addInitScript(() => localStorage.removeItem("attackmap_stix_cache_v5"))
   await page.route("https://raw.githubusercontent.com/**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_STIX) })
   )
@@ -194,7 +194,7 @@ test.describe("Phase 5 — Technique Detail + Platform Filter", () => {
         external_references: [{ source_name: "mitre-attack", external_id: "T9001" }],
       }],
     }
-    await page.addInitScript(() => localStorage.removeItem("attackmap_stix_cache_v4"))
+    await page.addInitScript(() => localStorage.removeItem("attackmap_stix_cache_v5"))
     await page.route("https://raw.githubusercontent.com/**", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(xssMock) })
     )

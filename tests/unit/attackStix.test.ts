@@ -321,13 +321,17 @@ describe("data source parsing — ATT&CK v16 detection-strategy schema", () => {
         type: "x-mitre-analytic",
         id: "x-mitre-analytic--an001",
         name: "A1",
-        x_mitre_data_component_ref: "x-mitre-data-component--dc001",
+        x_mitre_log_source_references: [
+          { x_mitre_data_component_ref: "x-mitre-data-component--dc001" },
+        ],
       },
       {
         type: "x-mitre-analytic",
         id: "x-mitre-analytic--an002",
         name: "A2",
-        x_mitre_data_component_ref: "x-mitre-data-component--dc002",
+        x_mitre_log_source_references: [
+          { x_mitre_data_component_ref: "x-mitre-data-component--dc002" },
+        ],
       },
       // detection-strategies — one per technique, reference analytics
       {
