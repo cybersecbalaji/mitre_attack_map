@@ -146,9 +146,9 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const logSrcRefs = (obj as any).x_mitre_log_source_references as Array<{ x_mitre_data_component_ref?: string }> | undefined
         if (logSrcRefs?.length) {
-          const dcRefs = [...new Set(
+          const dcRefs = Array.from(new Set(
             logSrcRefs.map((r) => r.x_mitre_data_component_ref).filter(Boolean) as string[]
-          )]
+          ))
           if (dcRefs.length) analyticByStixId.set(obj.id, { dataComponentRefs: dcRefs })
         }
         break
