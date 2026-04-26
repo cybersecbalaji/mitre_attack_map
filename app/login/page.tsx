@@ -26,8 +26,11 @@ function LoginForm() {
     try {
       await db.auth.sendMagicCode({ email: email.trim() })
       setStep("code")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send code. Check your email address.")
+    } catch (err: unknown) {
+      const msg =
+        (err as { body?: { message?: string } })?.body?.message ??
+        (err instanceof Error ? err.message : "Failed to send code. Check your email address.")
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -41,8 +44,11 @@ function LoginForm() {
     try {
       await db.auth.signInWithMagicCode({ email: email.trim(), code: code.trim() })
       router.replace("/app")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid or expired code.")
+    } catch (err: unknown) {
+      const msg =
+        (err as { body?: { message?: string } })?.body?.message ??
+        (err instanceof Error ? err.message : "Invalid or expired code.")
+      setError(msg)
     } finally {
       setLoading(false)
     }

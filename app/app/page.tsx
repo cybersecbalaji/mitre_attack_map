@@ -26,7 +26,9 @@ function matchesPlatformFilter(technique: ATTACKTechnique, filter: string[]): bo
 
 function AppContent() {
   const router = useRouter()
-  const { user } = isInstantDBConfigured ? db.useAuth() : { user: null }
+  // Always call db.useAuth() — Rules of Hooks forbid conditional calls.
+  // When InstantDB is not configured the placeholder appId returns user: null harmlessly.
+  const { user } = db.useAuth()
 
   const [matrixType, setMatrixType] = useState<MatrixType>("attack")
 
