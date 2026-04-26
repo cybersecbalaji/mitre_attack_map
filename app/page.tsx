@@ -254,7 +254,7 @@ export default function LandingPage() {
         </h2>
         <div className="flex flex-wrap gap-3">
           {[
-            "Next.js 14",
+            "Next.js 15",
             "TypeScript",
             "Tailwind CSS",
             "shadcn/ui",
