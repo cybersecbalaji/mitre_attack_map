@@ -19,9 +19,6 @@ interface StixObject {
   x_mitre_is_subtechnique?: boolean
   kill_chain_phases?: { kill_chain_name: string; phase_name: string }[]
   external_references?: { source_name: string; external_id?: string; url?: string }[]
-  // data-component parent ref
-  x_mitre_data_source_ref?: string
-  // relationship fields
   relationship_type?: string
   source_ref?: string
   target_ref?: string
@@ -33,7 +30,6 @@ interface StixBundle {
 
 function truncateDescription(desc: string | undefined): string {
   if (!desc) return ""
-  // Take first paragraph only
   const firstPara = desc.split(/\n\n/)[0].replace(/\s+/g, " ").trim()
   return firstPara.length > 300 ? firstPara.slice(0, 297) + "…" : firstPara
 }
@@ -52,12 +48,26 @@ function extractTactics(obj: StixObject): string[] {
 }
 
 function buildTechniqueUrl(techniqueId: string): string {
-  // e.g. T1059 → /techniques/T1059/ or T1059.003 → /techniques/T1059/003/
   const parts = techniqueId.split(".")
   if (parts.length === 2) {
     return `https://attack.mitre.org/techniques/${parts[0]}/${parts[1]}/`
   }
   return `https://attack.mitre.org/techniques/${techniqueId}/`
+}
+
+function addDataSource(
+  map: Map<string, DataSource[]>,
+  attackId: string,
+  entry: DataSource
+): void {
+  const list = map.get(attackId)
+  if (list) {
+    if (!list.some((d) => d.id === entry.id && d.component === entry.component)) {
+      list.push(entry)
+    }
+  } else {
+    map.set(attackId, [entry])
+  }
 }
 
 export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTechnique[]> {
@@ -95,21 +105,20 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
 
   // --- Single pass: collect all object types ---
   const rawTechniques: StixObject[] = []
-  // stix id → {DS0009, "Process"}
+
+  // Old schema (v9-v15): x-mitre-data-source → x-mitre-data-component → detects → attack-pattern
   const dataSourceByStixId = new Map<string, { id: string; name: string }>()
-  // stix id → {component name, parent data-source stix id}
-  const dataComponentByStixId = new Map<string, { name: string; parentStixId: string }>()
-  // stix id → Mitigation
+  const dataComponentByStixId = new Map<string, { name: string; externalId: string; parentStixId: string }>()
+
+  // New schema (v16+): x-mitre-detection-strategy → detects → attack-pattern
+  //   detection-strategy.x_mitre_analytic_refs → x-mitre-analytic.x_mitre_data_component_ref → data-component
+  const analyticByStixId = new Map<string, { dataComponentRef: string }>()
+  const detectionStrategyByStixId = new Map<string, { analyticRefs: string[] }>()
+
   const courseOfActionByStixId = new Map<string, Mitigation>()
-  // attack-pattern stix id → ATT&CK technique id (T1059)
   const stixIdToAttackId = new Map<string, string>()
-  // detects: data-component stix id → attack-pattern stix id
   const detectsRels: Array<{ sourceRef: string; targetRef: string }> = []
-  // mitigates: course-of-action stix id → attack-pattern stix id
   const mitigatesRels: Array<{ sourceRef: string; targetRef: string }> = []
-  // Fallback: parse x_mitre_data_sources strings directly from attack-pattern
-  // Format: "Process: Process Creation" → { id: "process", name: "Process", component: "Process Creation" }
-  const directDataSources = new Map<string, DataSource[]>()
 
   for (const obj of bundle.objects) {
     switch (obj.type) {
@@ -117,28 +126,7 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
         if (obj.x_mitre_deprecated || obj.revoked) break
         rawTechniques.push(obj)
         const attackId = extractTechniqueId(obj)
-        if (attackId) {
-          stixIdToAttackId.set(obj.id, attackId)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const legacySources = (obj as any).x_mitre_data_sources as string[] | undefined
-          if (legacySources?.length) {
-            const sources: DataSource[] = []
-            const seen = new Set<string>()
-            for (const entry of legacySources) {
-              const colonIdx = entry.indexOf(": ")
-              if (colonIdx === -1) continue
-              const sourceName = entry.slice(0, colonIdx).trim()
-              const compName = entry.slice(colonIdx + 2).trim()
-              const sourceId = sourceName.toLowerCase().replace(/\s+/g, "-")
-              const key = `${sourceId}::${compName}`
-              if (!seen.has(key)) {
-                seen.add(key)
-                sources.push({ id: sourceId, name: sourceName, component: compName })
-              }
-            }
-            if (sources.length > 0) directDataSources.set(attackId, sources)
-          }
-        }
+        if (attackId) stixIdToAttackId.set(obj.id, attackId)
         break
       }
       case "x-mitre-data-source": {
@@ -147,10 +135,22 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
         break
       }
       case "x-mitre-data-component": {
-        dataComponentByStixId.set(obj.id, {
-          name: obj.name,
-          parentStixId: obj.x_mitre_data_source_ref ?? "",
-        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parentRef = ((obj as any).x_mitre_data_source_ref as string | undefined) ?? ""
+        const extId = obj.external_references?.find((r) => r.source_name === "mitre-attack")?.external_id ?? ""
+        dataComponentByStixId.set(obj.id, { name: obj.name, externalId: extId, parentStixId: parentRef })
+        break
+      }
+      case "x-mitre-analytic": {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dcRef = (obj as any).x_mitre_data_component_ref as string | undefined
+        if (dcRef) analyticByStixId.set(obj.id, { dataComponentRef: dcRef })
+        break
+      }
+      case "x-mitre-detection-strategy": {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const refs = (obj as any).x_mitre_analytic_refs as string[] | undefined
+        if (refs?.length) detectionStrategyByStixId.set(obj.id, { analyticRefs: refs })
         break
       }
       case "course-of-action": {
@@ -177,20 +177,37 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
 
   // --- Build per-technique data-source maps ---
   const techDataSources = new Map<string, DataSource[]>()
+
   for (const { sourceRef, targetRef } of detectsRels) {
     const attackId = stixIdToAttackId.get(targetRef)
     if (!attackId) continue
+
+    // Old schema (v9-v15): sourceRef is an x-mitre-data-component
     const comp = dataComponentByStixId.get(sourceRef)
-    if (!comp) continue
-    const ds = dataSourceByStixId.get(comp.parentStixId)
-    if (!ds) continue
-    const entry: DataSource = { id: ds.id, name: ds.name, component: comp.name }
-    const list = techDataSources.get(attackId)
-    if (list) {
-      // Avoid duplicate components
-      if (!list.some((d) => d.id === ds.id && d.component === comp.name)) list.push(entry)
-    } else {
-      techDataSources.set(attackId, [entry])
+    if (comp) {
+      const parentDs = dataSourceByStixId.get(comp.parentStixId)
+      if (parentDs) {
+        // Full old schema: data-source (DS0009 "Process") + component ("Process Creation")
+        addDataSource(techDataSources, attackId, { id: parentDs.id, name: parentDs.name, component: comp.name })
+      } else {
+        // Partial old schema: data-component only, use its external id + name
+        const id = comp.externalId || comp.name.toLowerCase().replace(/\s+/g, "-")
+        addDataSource(techDataSources, attackId, { id, name: comp.name, component: comp.name })
+      }
+      continue
+    }
+
+    // New schema (v16+): sourceRef is an x-mitre-detection-strategy
+    const strategy = detectionStrategyByStixId.get(sourceRef)
+    if (!strategy) continue
+
+    for (const analyticRef of strategy.analyticRefs) {
+      const analytic = analyticByStixId.get(analyticRef)
+      if (!analytic) continue
+      const dc = dataComponentByStixId.get(analytic.dataComponentRef)
+      if (!dc) continue
+      const id = dc.externalId || dc.name.toLowerCase().replace(/\s+/g, "-")
+      addDataSource(techDataSources, attackId, { id, name: dc.name, component: dc.name })
     }
   }
 
@@ -216,7 +233,7 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
     const id = extractTechniqueId(obj)
     if (!id) continue
 
-    const technique: ATTACKTechnique = {
+    techniqueMap.set(id, {
       id,
       name: obj.name,
       description: truncateDescription(obj.description),
@@ -226,26 +243,20 @@ export async function fetchAndParseSTIX(signal?: AbortSignal): Promise<ATTACKTec
       isSubtechnique: obj.x_mitre_is_subtechnique ?? id.includes("."),
       parentId: id.includes(".") ? id.split(".")[0] : undefined,
       url: buildTechniqueUrl(id),
-      dataSources: techDataSources.get(id) ?? directDataSources.get(id) ?? [],
+      dataSources: techDataSources.get(id) ?? [],
       mitigations: techMitigations.get(id) ?? [],
-    }
-
-    techniqueMap.set(id, technique)
+    })
   }
 
   const allTechniqueValues = Array.from(techniqueMap.values())
 
-  // Attach subtechniques to their parents
   for (const technique of allTechniqueValues) {
     if (technique.isSubtechnique && technique.parentId) {
       const parent = techniqueMap.get(technique.parentId)
-      if (parent) {
-        parent.subtechniques.push(technique)
-      }
+      if (parent) parent.subtechniques.push(technique)
     }
   }
 
-  // Sort subtechniques by ID within each parent
   for (const technique of allTechniqueValues) {
     technique.subtechniques.sort((a, b) => a.id.localeCompare(b.id))
   }
