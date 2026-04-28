@@ -9,6 +9,7 @@ const schema = i.schema({
       platformFilter: i.json(),
       rulesJson: i.string(),
       coverageStats: i.json(),
+      currentRules: i.json(),
     }),
   },
 })
