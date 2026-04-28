@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import localFont from "next/font/local"
 import "./globals.css"
+import { FeedbackWidget } from "@/components/FeedbackWidget"
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body className={`${geistSans.variable} font-sans bg-slate-900 text-slate-100 min-h-screen antialiased`}>
         {children}
+        <FeedbackWidget />
       </body>
     </html>
   )
