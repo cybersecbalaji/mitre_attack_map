@@ -17,6 +17,7 @@ interface InstantDBSnapshotRow {
   platformFilter: string[]
   rulesJson: string
   coverageStats: CoverageStats
+  currentRules?: MappedRule[]
 }
 
 interface UseWorkspaceResult {
@@ -30,6 +31,8 @@ interface UseWorkspaceResult {
   loadSnapshot: (id: string) => WorkspaceSnapshot | null
   forkAsNew: () => string                  // generate a new workspace ID, return it
   shareUrl: string                          // current share URL with ?ws=<id>
+  currentRules: MappedRule[]
+  setCurrentRules: (rules: MappedRule[]) => Promise<void>
 }
 
 function readSharedIdFromUrl(): string | null {
@@ -69,6 +72,7 @@ export function useWorkspace(): UseWorkspaceResult {
   const [workspaceName, setWorkspaceNameState] = useState("My Coverage Workspace")
   const [isShared, setIsShared] = useState(false)
   const [snapshots, setSnapshots] = useState<WorkspaceSnapshot[]>([])
+  const [currentRules, setCurrentRulesState] = useState<MappedRule[]>([])
 
   // InstantDB live query (only effective when configured AND we have an ID)
   const remoteQuery = db.useQuery(
@@ -87,6 +91,16 @@ export function useWorkspace(): UseWorkspaceResult {
       const nm = localStorage.getItem(WS_NAME_KEY_PREFIX + sharedId)
       if (nm) setWorkspaceNameState(nm)
       setSnapshots(loadLocalSnapshots(sharedId))
+      // Load cached rules for this workspace
+      try {
+        const rulesJson = localStorage.getItem("attackmap_active_rules")
+        if (rulesJson) {
+          const parsed = JSON.parse(rulesJson)
+          if (Array.isArray(parsed)) setCurrentRulesState(parsed)
+        }
+      } catch {
+        // Ignore parsing errors
+      }
       return
     }
 
@@ -100,6 +114,16 @@ export function useWorkspace(): UseWorkspaceResult {
     const nm = localStorage.getItem(WS_NAME_KEY_PREFIX + id)
     if (nm) setWorkspaceNameState(nm)
     setSnapshots(loadLocalSnapshots(id))
+    // Load cached rules for this workspace
+    try {
+      const rulesJson = localStorage.getItem("attackmap_active_rules")
+      if (rulesJson) {
+        const parsed = JSON.parse(rulesJson)
+        if (Array.isArray(parsed)) setCurrentRulesState(parsed)
+      }
+    } catch {
+      // Ignore parsing errors
+    }
   }, [])
 
   // Sync remote snapshot into local UI (when InstantDB is configured)
@@ -125,6 +149,13 @@ export function useWorkspace(): UseWorkspaceResult {
     if (remoteSnapshots.length > 0) {
       setWorkspaceNameState(remoteSnapshots[0].name)
       localStorage.setItem(WS_NAME_KEY_PREFIX + workspaceId, remoteSnapshots[0].name)
+      // Load the most recent rules as current
+      setCurrentRulesState(remoteSnapshots[0].rules)
+    }
+
+    // Also load currentRules from the workspace document if available
+    if (rows.length > 0 && rows[0].currentRules) {
+      setCurrentRulesState(rows[0].currentRules)
     }
 
     // Merge remote with local; dedupe by id (remote wins)
@@ -212,6 +243,39 @@ export function useWorkspace(): UseWorkspaceResult {
     return newId
   }, [])
 
+  const setCurrentRules = useCallback(
+    async (rules: MappedRule[]): Promise<void> => {
+      setCurrentRulesState(rules)
+
+      // Always save to localStorage
+      try {
+        if (rules.length === 0) {
+          localStorage.removeItem("attackmap_active_rules")
+        } else {
+          localStorage.setItem("attackmap_active_rules", JSON.stringify(rules))
+        }
+      } catch {
+        // Quota exceeded; ignore
+      }
+
+      // Save to InstantDB if configured and we have a workspace
+      if (isInstantDBConfigured && workspaceId) {
+        try {
+          const now = Date.now()
+          await db.transact([
+            tx.workspaces[workspaceId].update({
+              currentRules: rules,
+              updatedAt: now,
+            }),
+          ])
+        } catch (err) {
+          console.warn("[useWorkspace] Failed to save rules to InstantDB (saved to localStorage):", err)
+        }
+      }
+    },
+    [workspaceId, isInstantDBConfigured]
+  )
+
   const shareUrl =
     typeof window !== "undefined" && workspaceId
       ? (() => {
@@ -232,5 +296,7 @@ export function useWorkspace(): UseWorkspaceResult {
     loadSnapshot,
     forkAsNew,
     shareUrl,
+    currentRules,
+    setCurrentRules,
   }
 }

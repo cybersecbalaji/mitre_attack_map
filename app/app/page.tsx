@@ -44,7 +44,6 @@ function AppContent() {
   const tacticOrder = matrixType === "atlas" ? atlasData.tacticOrder : undefined
   const tacticNames = matrixType === "atlas" ? atlasData.tacticNames : undefined
 
-  const { coverageMap, rules, addRules, clearRules, replaceRules } = useCoverageMap(allTechniques)
   const {
     workspaceName,
     setWorkspaceName,
@@ -54,7 +53,15 @@ function AppContent() {
     loadSnapshot,
     forkAsNew,
     shareUrl,
+    currentRules: workspaceRules,
+    setCurrentRules,
   } = useWorkspace()
+
+  const { coverageMap, rules, addRules, clearRules, replaceRules } = useCoverageMap({
+    techniques: allTechniques,
+    workspaceRules,
+    onRulesChange: setCurrentRules,
+  })
 
   const [selectedTechnique, setSelectedTechnique] = useState<ATTACKTechnique | null>(null)
   const [platformFilter, setPlatformFilter] = useState<string[]>([])

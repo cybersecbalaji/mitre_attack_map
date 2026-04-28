@@ -3,8 +3,14 @@ import { useState, useMemo, useEffect } from "react"
 import { ATTACKTechnique, CoverageMap, CoverageStats, MappedRule } from "@/types"
 import { buildCoverageMap, calculateCoverageStats } from "@/lib/coverageCalculator"
 
-// Fixed key — not workspace-scoped, keeps it simple and avoids async workspace-ID race
+// Fallback key for local-only mode (when InstantDB not configured)
 const RULES_STORAGE_KEY = "attackmap_active_rules"
+
+interface UseCoverageMapProps {
+  techniques: ATTACKTechnique[]
+  workspaceRules?: MappedRule[]
+  onRulesChange?: (rules: MappedRule[]) => Promise<void>
+}
 
 interface UseCoverageMapResult {
   coverageMap: CoverageMap
@@ -27,23 +33,39 @@ function loadRulesFromStorage(): MappedRule[] {
   }
 }
 
-export function useCoverageMap(techniques: ATTACKTechnique[]): UseCoverageMapResult {
-  // Lazy initializer runs synchronously on first mount — no async race possible
-  const [rules, setRules] = useState<MappedRule[]>(loadRulesFromStorage)
+export function useCoverageMap({
+  techniques,
+  workspaceRules,
+  onRulesChange,
+}: UseCoverageMapProps): UseCoverageMapResult {
+  // If workspace rules are provided, use them; otherwise load from localStorage
+  const [rules, setRules] = useState<MappedRule[]>(() => workspaceRules ?? loadRulesFromStorage())
+
+  // Sync workspace rules when they change (from InstantDB)
+  useEffect(() => {
+    if (workspaceRules) {
+      setRules(workspaceRules)
+    }
+  }, [workspaceRules])
 
   const coverageMap = useMemo(() => buildCoverageMap(rules, techniques), [rules, techniques])
   const coverageStats = useMemo(() => calculateCoverageStats(techniques, coverageMap), [techniques, coverageMap])
 
-  // Persist on every change
+  // Persist on every change via workspace callback or localStorage
   useEffect(() => {
-    try {
-      if (rules.length === 0) {
-        localStorage.removeItem(RULES_STORAGE_KEY)
-      } else {
-        localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(rules))
-      }
-    } catch {}
-  }, [rules])
+    if (onRulesChange) {
+      onRulesChange(rules)
+    } else {
+      // Fallback: save to localStorage when no workspace callback
+      try {
+        if (rules.length === 0) {
+          localStorage.removeItem(RULES_STORAGE_KEY)
+        } else {
+          localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(rules))
+        }
+      } catch {}
+    }
+  }, [rules, onRulesChange])
 
   const addRules = (newRules: MappedRule[]) => {
     setRules((prev) => {
