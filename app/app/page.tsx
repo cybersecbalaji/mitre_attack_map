@@ -141,6 +141,9 @@ function AppContent() {
 
   const handleSignOut = useCallback(async () => {
     if (!isInstantDBConfigured) return
+    try {
+      localStorage.removeItem("attackmap_active_rules")
+    } catch {}
     await db.auth.signOut()
     router.push("/login")
   }, [router])
