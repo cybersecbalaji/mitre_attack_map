@@ -44,8 +44,8 @@ function AppContent() {
   const tacticOrder = matrixType === "atlas" ? atlasData.tacticOrder : undefined
   const tacticNames = matrixType === "atlas" ? atlasData.tacticNames : undefined
 
-  const { coverageMap, rules, addRules, clearRules, replaceRules } = useCoverageMap(allTechniques)
   const {
+    workspaceId,
     workspaceName,
     setWorkspaceName,
     isShared,
@@ -54,7 +54,12 @@ function AppContent() {
     loadSnapshot,
     forkAsNew,
     shareUrl,
+    rules,
+    addRules,
+    replaceRules,
+    clearRules,
   } = useWorkspace()
+  const { coverageMap } = useCoverageMap(rules, allTechniques)
 
   const [selectedTechnique, setSelectedTechnique] = useState<ATTACKTechnique | null>(null)
   const [platformFilter, setPlatformFilter] = useState<string[]>([])
@@ -142,11 +147,16 @@ function AppContent() {
   const handleSignOut = useCallback(async () => {
     if (!isInstantDBConfigured) return
     try {
+      // Clear both legacy unscoped key and the user-scoped key so the next
+      // person on this browser doesn't see this account's rules
       localStorage.removeItem("attackmap_active_rules")
+      if (workspaceId) {
+        localStorage.removeItem(`attackmap_active_rules_${workspaceId}`)
+      }
     } catch {}
     await db.auth.signOut()
     router.push("/login")
-  }, [router])
+  }, [router, workspaceId])
 
   if (error) {
     return (
